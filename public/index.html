@@ -3,16 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blockchain TxHash Checker</title>
-    <link href="style.css" rel="stylesheet">
+    <title>Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Signika:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="container">
-        <h1>Blockchain Transaction Checker</h1>
-        <input type="text" id="txHash" placeholder="Enter Transaction Hash">
-        <button onclick="checkTransaction()">Check</button>
-        <div id="result"></div>
+        <div class="login-container">
+            <h1>Admin Login</h1>
+            <input type="password" id="adminPassword" placeholder="Enter Admin Password" />
+            <button id="loginBtn">Login</button>
+        </div>
+
+        <div class="fingerprint-container" id="fingerprintAuth" style="display: none;">
+            <h2>Fingerprint Authentication</h2>
+            <button id="registerFingerprint">Register Fingerprint</button>
+            <button id="authenticateFingerprint">Authenticate Fingerprint</button>
+        </div>
+
+        <div id="toast-container"></div>
     </div>
-    <script src="script.js"></script>
+
+    <script src="js/script.js"></script>
 </body>
 </html>
