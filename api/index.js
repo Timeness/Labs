@@ -1,102 +1,89 @@
 const express = require("express");
-const axios = require("axios");
+const fs = require("fs");
+const bodyParser = require("body-parser");
 const cors = require("cors");
+require("dotenv").config();
+const webauthn = require("webauthn");
+
 const app = express();
+const PORT = 5000;
 
-const PORT = 3000;
 app.use(cors());
+app.use(bodyParser.json());
 
-const CHAINBASE_API_KEY = "YOUR_CHAINBASE_API_KEY";  
-const COVALENT_API_KEY = "YOUR_COVALENT_API_KEY";    
-const BLOCKCHAIR_API = "https://api.blockchair.com/";
-const CHAINLIST_API = "https://chainid.network/chains.json"; 
+const DATABASE_FILE = "./server/database.json";
 
-let chainList = {};
-
-async function fetchChainList() {
-    try {
-        const response = await axios.get(CHAINLIST_API);
-        chainList = response.data.reduce((acc, chain) => {
-            acc[chain.chainId] = chain.name.toLowerCase();
-            return acc;
-        }, {});
-        console.log("✅ Blockchain List Updated!");
-    } catch (error) {
-        console.error("Error fetching blockchain list:", error);
-    }
+let database = { admins: [], approvals: [], failedAttempts: 0, systemLocked: false, ownerPassword: process.env.OWNER_PASSWORD, fingerprints: [] };
+if (fs.existsSync(DATABASE_FILE)) {
+    database = JSON.parse(fs.readFileSync(DATABASE_FILE, "utf-8"));
 }
 
-fetchChainList();
-setInterval(fetchChainList, 86400000);
+const saveDatabase = () => {
+    fs.writeFileSync(DATABASE_FILE, JSON.stringify(database, null, 2));
+};
 
-app.get("/api/check", async (req, res) => {
-    try {
-        const { txHash } = req.query;
-        if (!txHash) return res.json({ error: "Transaction hash required!" });
+const generateChallenge = () => {
+    return webauthn.generateChallenge();
+};
 
-        const network = await detectNetworkChainbase(txHash);
-        if (!network) return res.json({ error: "Unsupported network or invalid hash!" });
+const verifyAssertion = (credential, challenge) => {
+    return webauthn.verifyAssertion(credential, challenge);
+};
 
-        let response;
-        if (network in chainList) {
-            response = await axios.get(`https://api.covalenthq.com/v1/${chainList[network]}/transaction_v2/${txHash}/?key=${COVALENT_API_KEY}`);
-            const txData = response.data.data.items[0];
+app.post("/register-fingerprint", async (req, res) => {
+    const { fingerprint } = req.body;
 
-            if (!txData) return res.json({ error: "Transaction not found!" });
+    const newChallenge = generateChallenge();
+    database.fingerprints.push({ fingerprint, challenge: newChallenge });
+    saveDatabase();
 
-            let result = {
-                "Transaction Hash": txHash,
-                "From": txData.from_address,
-                "To": txData.to_address,
-                "Value": `${txData.value} ${chainList[network].toUpperCase()}`,
-                "USD Value": `$${txData.value_quote} USD`,
-                "Transaction Fee": txData.fees_paid,
-                "Gas Limit": txData.gas_limit,
-                "Gas Price": txData.gas_price,
-                "Block Number": txData.block_height,
-                "Status": txData.successful ? "Success" : "Failed",
-                "Timestamp (UTC)": txData.block_signed_at
-            };
+    res.json({ challenge: newChallenge });
+});
 
-            res.json(result);
-        } else {
-            response = await axios.get(`${BLOCKCHAIR_API}${network}/dashboards/transaction/${txHash}`);
-            const txData = response.data.data[txHash];
+app.post("/authenticate-fingerprint", async (req, res) => {
+    const { fingerprint, assertion } = req.body;
 
-            if (!txData) return res.json({ error: "Transaction not found!" });
+    const storedFingerprint = database.fingerprints.find(f => f.fingerprint === fingerprint);
+    if (!storedFingerprint) return res.status(401).json({ success: false, message: "Fingerprint not found." });
 
-            let result = {
-                "Transaction Hash": txHash,
-                "From": txData.transaction.sender || "N/A",
-                "To": txData.transaction.recipient || "N/A",
-                "Value": `${txData.transaction.value} ${network.toUpperCase()}`,
-                "USD Value": `$${txData.transaction.value_usd || "0"} USD`,
-                "Transaction Fee": txData.transaction.fee || "N/A",
-                "Gas Limit": txData.transaction.gas_limit || "N/A",
-                "Gas Price": txData.transaction.gas_price || "N/A",
-                "Block Number": txData.transaction.block_id || "Pending",
-                "Status": txData.transaction.status || "Pending",
-                "Timestamp (UTC)": txData.transaction.time || "N/A"
-            };
-
-            res.json(result);
-        }
-    } catch (error) {
-        console.error("Error fetching transaction:", error);
-        res.json({ error: "Failed to fetch transaction details!" });
+    const isVerified = verifyAssertion(assertion, storedFingerprint.challenge);
+    if (isVerified) {
+        res.json({ success: true, message: "Fingerprint authenticated!" });
+    } else {
+        res.status(401).json({ success: false, message: "Authentication failed." });
     }
 });
 
-async function detectNetworkChainbase(txHash) {
-    try {
-        const response = await axios.get(`https://api.chainbase.online/v1/hash/${txHash}`, {
-            headers: { "x-api-key": CHAINBASE_API_KEY }
-        });
-        return response.data.data.chain_name || null;
-    } catch (error) {
-        console.error("Error detecting network:", error);
-        return null;
+app.post("/login", (req, res) => {
+    if (database.systemLocked) {
+        return res.status(403).json({ success: false, message: "System is locked. Contact owner to unlock." });
     }
-}
 
-app.listen(PORT, () => console.log(`Server running on ::${PORT}`));
+    const { password } = req.body;
+    if (password === process.env.OWNER_PASSWORD) {
+        database.failedAttempts = 0;
+        saveDatabase();
+        return res.json({ success: true, message: "Owner login successful. Unlocking system." });
+    }
+
+    const validAdmin = database.admins.some((hashedPass) =>
+        bcrypt.compareSync(password, hashedPass)
+    );
+
+    if (validAdmin) {
+        database.failedAttempts = 0;
+        saveDatabase();
+        res.json({ success: true, message: "Login Successful" });
+    } else {
+        database.failedAttempts += 1;
+        if (database.failedAttempts >= 5) {
+            database.systemLocked = true;
+            saveDatabase();
+            return res.status(403).json({ success: false, message: "Too many failed attempts. System is locked." });
+        }
+        saveDatabase();
+        res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
