@@ -1,23 +1,85 @@
+/* General Styles */
 body {
-    font-family: Arial, sans-serif;
-    text-align: center;
-    background: #f8f9fa;
+    font-family: 'Signika', sans-serif;
+    background-color: #1a1a1a;
+    color: #f1f1f1;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
 }
 
 .container {
-    margin-top: 50px;
+    text-align: center;
+    max-width: 400px;
+    width: 100%;
 }
 
+h1, h2 {
+    color: #f1f1f1;
+}
+
+/* Input and Buttons */
 input {
     padding: 10px;
-    width: 400px;
     margin: 10px;
+    width: 80%;
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 5px;
 }
 
 button {
-    padding: 10px 20px;
-    background: #007bff;
-    color: white;
+    padding: 10px;
+    background-color: #007bff;
+    color: #fff;
     border: none;
+    border-radius: 5px;
     cursor: pointer;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+/* Toast Notifications */
+#toast-container {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.toast {
+    background-color: #28a745;
+    color: white;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 5px;
+    opacity: 1;
+    transition: opacity 1s ease-out;
+}
+
+.toast.error {
+    background-color: #dc3545;
+}
+
+.toast.removed {
+    opacity: 0;
+}
+
+.toast.error.removed {
+    background-color: #ff6f61;
+}
+
+/* Specific Styles */
+.fingerprint-container {
+    margin-top: 30px;
+}
+
+button:focus {
+    outline: none;
 }
